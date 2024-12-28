@@ -13,9 +13,9 @@ Mode = Literal["proofread", "translate"]
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", type=str, choices=["proofread", "translate"])
-    parser.add_argument("input", type=str)
-    parser.add_argument("output", type=str)
+    parser.add_argument("--mode", type=str, choices=["proofread", "translate"], required=True)
+    parser.add_argument("--input", type=str, required=True)
+    parser.add_argument("--output", type=str, required=True)
     return parser.parse_args()
 
 def count_tokens(text: str) -> int:
