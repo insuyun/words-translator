@@ -26,3 +26,6 @@ python words.py --mode proofread --input samples/2_break.txt --output samples/3_
 ```bash
 python words.py --mode translate --input samples/3_proofread.txt --output samples/4_translated.txt
 ```
+
+## 번역본
+[새누리 교회 설교 번역](https://drive.google.com/file/d/11GujPdp8BoR66tFNpmRstnF6haqJiTWb/view?usp=sharing)
