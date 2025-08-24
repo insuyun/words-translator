@@ -1,4 +1,3 @@
-
 import re
 import argparse
 import openai
@@ -36,7 +35,7 @@ def _make_prompt(paragraph: str, mode: Mode) -> str:
         {paragraph}
         """
     elif mode == "translate":
-        return f"""문장을 영어로 번역해주세요. 성경 문장은 NIV를 기준으로 합니다. 문장의 내용은 바꾸지 말고 내용만 번역해주세요. 입력드리는 내용을 하나의 문단으로 처리해주세요. 즉 줄바꿈 없이 하나의 문단으로 처리해주세요. 결과만 반환하고 설명은 하지 않습니다.
+        return f"""문장을 영어로 번역해주세요. 성경 문장은 NIV를 기준으로 합니다. 문장의 내용은 바꾸지 말고 내용만 번역해주세요. 입력드리는 내용을 하나의 문단으로 처리해주세요. 즉 줄바꿈 없이 하나의 문단으로 처리해주세요. 결과만 반환하고 설명은 하지 않습니다. 새누리 교회처럼 보이는 단어는 Saenuri Church로 번역해주세요.
 
         {paragraph}
         """
