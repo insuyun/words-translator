@@ -1,0 +1,10 @@
+[project]
+name = "words-translator"
+version = "0.1.0"
+description = "설교문 검수 및 다국어 번역 도구"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.58.1",
+    "tiktoken>=0.8.0",
+    "python-dotenv>=1.0.1",
+]

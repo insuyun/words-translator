@@ -7,9 +7,9 @@
 OPENAI_API_KEY=sk-...
 ```
 
-2. `requirements.txt`에 있는 패키지를 설치합니다.
+2. [uv](https://docs.astral.sh/uv/)로 의존성을 설치합니다.
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ## 사용법
@@ -18,13 +18,13 @@ pip install -r requirements.txt
 3. 해당 파일을 확인하여 "------"로 문단을 구분하여 `samples/2_break.txt`와 같은 파일에 저장합니다.
 4. `words.py`를 실행하여 맞춤법 검사를 진행합니다
 ```bash
-python words.py --mode proofread --input samples/2_break.txt --output samples/3_proofread.txt
+uv run words.py --mode proofread --input samples/2_break.txt --output samples/3_proofread.txt
 
 ```
 5. 맞춤법 검사 결과를 확인하여 오류가 있는 부분을 수정합니다.
 6. `words.py`를 실행하여 번역을 진행합니다
 ```bash
-python words.py --mode translate --input samples/3_proofread.txt --output samples/4_translated.txt
+uv run words.py --mode translate --input samples/3_proofread.txt --output samples/4_translated.txt
 ```
 
 ## 번역본
