@@ -56,7 +56,20 @@ def parse_args():
     parser.add_argument("--prompt", type=str, default="", help="추가 프롬프트 지시사항")
     parser.add_argument("--language", type=str, choices=list(LANGUAGES.keys()), default=None,
                         help="translate 모드에서 특정 언어 하나만 번역 (생략 시 전체 언어)")
+    parser.add_argument("--glossary", type=str, default=None,
+                        help="용어집 markdown 파일 경로 (기본: ./glossary.md, 없으면 무시)")
     return parser.parse_args()
+
+
+DEFAULT_GLOSSARY_PATH = Path("glossary.md")
+
+
+def _load_glossary(path: Path | None) -> str:
+    if path is None:
+        return DEFAULT_GLOSSARY_PATH.read_text() if DEFAULT_GLOSSARY_PATH.exists() else ""
+    if not path.exists():
+        raise FileNotFoundError(f"용어집 파일을 찾을 수 없습니다: {path}")
+    return path.read_text()
 
 def count_tokens(text: str) -> int:
     encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
@@ -74,8 +87,8 @@ def _today_str() -> str:
 
 
 def _parse_raw(text: str) -> tuple[str, str, str]:
-    title_match = re.search(r"^제목:\s*(.+)$", text, re.MULTILINE)
-    scripture_match = re.search(r"^본문:\s*(.+)$", text, re.MULTILINE)
+    title_match = re.search(r"^제목:[ \t]*(.+)$", text, re.MULTILINE)
+    scripture_match = re.search(r"^본문:[ \t]*(.+)$", text, re.MULTILINE)
     sep_match = re.search(r"^---+\s*$", text, re.MULTILINE)
 
     missing = []
@@ -120,12 +133,25 @@ def _make_prompt(paragraph: str, mode: Mode, language: str = "english", extra_pr
         {paragraph}
         """
 
-def _make_system_prompt(mode: Mode, language: str = "english") -> str:
+def _glossary_block(glossary: str) -> str:
+    if not glossary.strip():
+        return ""
+    return (
+        "\n\n다음은 이 교회 고유의 용어집입니다. 검수/번역 시 반드시 이 용어집을 따르세요. "
+        "사역자 이름 및 고유 용어는 임의로 수정/축약하지 말고 용어집 지침대로 처리하세요.\n"
+        "----------\n"
+        f"{glossary.strip()}\n"
+        "----------"
+    )
+
+
+def _make_system_prompt(mode: Mode, language: str = "english", glossary: str = "") -> str:
     if mode == "proofread":
-        return "당신은 문장을 검수하는 프로그램입니다. 문장을 검수하고 오류를 수정하여 반환해주세요. 절대 질문하지 말고 결과만 반환하세요."
+        base = "당신은 문장을 검수하는 프로그램입니다. 문장을 검수하고 오류를 수정하여 반환해주세요. 절대 질문하지 말고 결과만 반환하세요."
     elif mode == "translate":
         lang_config = LANGUAGES[language]
-        return f"당신은 문장을 {lang_config['name']}로 번역하는 프로그램입니다. 문장을 {lang_config['name']}로 번역하여 반환해주세요. 절대 질문하지 말고 결과만 반환하세요."
+        base = f"당신은 문장을 {lang_config['name']}로 번역하는 프로그램입니다. 문장을 {lang_config['name']}로 번역하여 반환해주세요. 절대 질문하지 말고 결과만 반환하세요."
+    return base + _glossary_block(glossary)
 
 def _to_paragraphs(mode: Mode, text: str) -> list[str]:
     if mode == "proofread":
@@ -134,11 +160,11 @@ def _to_paragraphs(mode: Mode, text: str) -> list[str]:
         return re.split(r"\n\n", text)
 
 
-def _call_gpt(client: openai.OpenAI, mode: Mode, language: str, prompt: str, previous_response_id: str | None) -> tuple[str, str]:
+def _call_gpt(client: openai.OpenAI, mode: Mode, language: str, prompt: str, previous_response_id: str | None, glossary: str = "") -> tuple[str, str]:
     for attempt in range(3):
         response = client.responses.create(
             model="gpt-5.4-nano",
-            instructions=_make_system_prompt(mode, language),
+            instructions=_make_system_prompt(mode, language, glossary),
             input=prompt,
             max_output_tokens=16384,
             store=True,
@@ -150,7 +176,7 @@ def _call_gpt(client: openai.OpenAI, mode: Mode, language: str, prompt: str, pre
     raise RuntimeError(f"GPT call failed after 3 retries (mode={mode}, language={language})")
 
 
-def _process_body(client: openai.OpenAI, mode: Mode, language: str, body: str, extra_prompt: str = "") -> str:
+def _process_body(client: openai.OpenAI, mode: Mode, language: str, body: str, extra_prompt: str = "", glossary: str = "") -> str:
     paragraphs = _to_paragraphs(mode, body)
     _check_token_limit(paragraphs)
 
@@ -161,7 +187,7 @@ def _process_body(client: openai.OpenAI, mode: Mode, language: str, body: str, e
         if paragraph.strip() == "":
             continue
         prompt = _make_prompt(paragraph, mode, language, extra_prompt)
-        result, previous_response_id = _call_gpt(client, mode, language, prompt, previous_response_id)
+        result, previous_response_id = _call_gpt(client, mode, language, prompt, previous_response_id, glossary)
         print(f"FROM: {paragraph}")
         print(f"TO: {result}\n\n")
         output_paragraphs.append(result)
@@ -169,9 +195,9 @@ def _process_body(client: openai.OpenAI, mode: Mode, language: str, body: str, e
     return "\n\n".join(output_paragraphs)
 
 
-def _translate_text(client: openai.OpenAI, language: str, text: str, extra_prompt: str = "") -> str:
+def _translate_text(client: openai.OpenAI, language: str, text: str, extra_prompt: str = "", glossary: str = "") -> str:
     prompt = _make_prompt(text, "translate", language, extra_prompt)
-    result, _ = _call_gpt(client, "translate", language, prompt, None)
+    result, _ = _call_gpt(client, "translate", language, prompt, None, glossary)
     return result.strip()
 
 
@@ -186,19 +212,19 @@ def _run_pandoc(md_path: Path, pdf_path: Path, language: str):
     subprocess.run(cmd, check=True)
 
 
-def proofread_main(client: openai.OpenAI, extra_prompt: str = ""):
+def proofread_main(client: openai.OpenAI, extra_prompt: str = "", glossary: str = ""):
     output_path = Path("proofread.txt")
     if output_path.exists():
         print(f"[!] Output file already exists, skipping: {output_path}")
         return
 
     title, scripture, sermon = _parse_raw(Path("raw.txt").read_text())
-    proofread_sermon = _process_body(client, "proofread", "english", sermon, extra_prompt)
+    proofread_sermon = _process_body(client, "proofread", "english", sermon, extra_prompt, glossary)
     output_path.write_text(_format_with_header(title, scripture, proofread_sermon))
     print(f"[+] Written: {output_path}")
 
 
-def translate_main(client: openai.OpenAI, extra_prompt: str = "", only_language: str | None = None):
+def translate_main(client: openai.OpenAI, extra_prompt: str = "", only_language: str | None = None, glossary: str = ""):
     title, scripture, sermon = _parse_raw(Path("proofread.txt").read_text())
     today = _today_str()
     out_dir = Path(today)
@@ -215,9 +241,9 @@ def translate_main(client: openai.OpenAI, extra_prompt: str = "", only_language:
             print(f"[!] PDF already exists, skipping: {pdf_path}")
             continue
 
-        translated_title = _translate_text(client, language, title, extra_prompt)
-        translated_scripture = _translate_text(client, language, scripture, SCRIPTURE_HINT)
-        translated_sermon = _process_body(client, "translate", language, sermon, extra_prompt)
+        translated_title = _translate_text(client, language, title, extra_prompt, glossary)
+        translated_scripture = _translate_text(client, language, scripture, SCRIPTURE_HINT, glossary)
+        translated_sermon = _process_body(client, "translate", language, sermon, extra_prompt, glossary)
 
         md_content = (
             f"# {translated_title} ({translated_scripture})\n\n"
@@ -237,10 +263,14 @@ def main():
     args = parse_args()
     client = openai.OpenAI()
 
+    glossary = _load_glossary(Path(args.glossary) if args.glossary else None)
+    if glossary:
+        print(f"[*] 용어집 로드: {len(glossary)}자")
+
     if args.mode == "proofread":
-        proofread_main(client, args.prompt)
+        proofread_main(client, args.prompt, glossary)
     elif args.mode == "translate":
-        translate_main(client, args.prompt, args.language)
+        translate_main(client, args.prompt, args.language, glossary)
 
 if __name__ == "__main__":
     load_dotenv()
