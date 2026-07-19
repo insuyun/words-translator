@@ -2,6 +2,7 @@ import re
 import argparse
 import subprocess
 import datetime
+import time
 import openai
 import tiktoken
 from typing import Literal
@@ -161,19 +162,35 @@ def _to_paragraphs(mode: Mode, text: str) -> list[str]:
 
 
 def _call_gpt(client: openai.OpenAI, mode: Mode, language: str, prompt: str, previous_response_id: str | None, glossary: str = "") -> tuple[str, str]:
-    for attempt in range(3):
-        response = client.responses.create(
-            model="gpt-5.4-nano",
-            instructions=_make_system_prompt(mode, language, glossary),
-            input=prompt,
-            max_output_tokens=16384,
-            store=True,
-            **({"previous_response_id": previous_response_id} if previous_response_id else {}),
-        )
-        if response.status == "completed":
-            return response.output_text, response.id
-        print(f"[!] Retry {attempt + 1}/3 (status={response.status})")
-    raise RuntimeError(f"GPT call failed after 3 retries (mode={mode}, language={language})")
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            response = client.responses.create(
+                model="gpt-5.4-nano",
+                instructions=_make_system_prompt(mode, language, glossary),
+                input=prompt,
+                max_output_tokens=16384,
+                store=True,
+                **({"previous_response_id": previous_response_id} if previous_response_id else {}),
+            )
+            if response.status == "completed":
+                return response.output_text, response.id
+            print(f"[!] Retry {attempt + 1}/{max_retries} (status={response.status})")
+        except openai.RateLimitError as e:
+            wait_match = re.search(r"Please try again in ([\d.]+)s", str(e))
+            wait_time = float(wait_match.group(1)) if wait_match else (2 ** attempt)
+            wait_time += 0.1
+            if attempt == max_retries - 1:
+                raise RuntimeError(f"Rate limit exceeded after {max_retries} retries (mode={mode}, language={language})") from e
+            print(f"[!] Rate limit hit. Waiting {wait_time:.1f}s before retry {attempt + 2}/{max_retries}...")
+            time.sleep(wait_time)
+        except openai.APIError as e:
+            if attempt == max_retries - 1:
+                raise
+            wait_time = 2 ** attempt
+            print(f"[!] API error: {e}. Waiting {wait_time}s before retry {attempt + 2}/{max_retries}...")
+            time.sleep(wait_time)
+    raise RuntimeError(f"GPT call failed after {max_retries} retries (mode={mode}, language={language})")
 
 
 def _process_body(client: openai.OpenAI, mode: Mode, language: str, body: str, extra_prompt: str = "", glossary: str = "") -> str:
