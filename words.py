@@ -36,7 +36,10 @@ LANGUAGES = {
         "bible": None,
         "church": "سائېنۇرى چېركاۋ",
         "font": "Noto Naskh Arabic",
-        "pandoc_extra": ["-V", "dir=rtl", "-V", "lang=ug"],
+        # polyglossia has no Uyghur language definition, so `lang=ug` makes
+        # pandoc emit an empty \setmainlanguage[]{} and xelatex errors out.
+        # dir=rtl alone gives correct RTL rendering for the Arabic script.
+        "pandoc_extra": ["-V", "dir=rtl"],
     },
 }
 
